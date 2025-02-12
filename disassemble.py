@@ -1,3 +1,8 @@
+# To be run with customized python3!
+"""
+Small helper script that simply unmarshals and disassembles the input file.
+"""
+
 import dis
 import marshal
 import sys

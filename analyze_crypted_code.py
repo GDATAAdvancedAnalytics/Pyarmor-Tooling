@@ -1,3 +1,9 @@
+# To be run with customized python3!
+"""
+This script processes the decrypted pyarmor bytes string and outputs
+a json file that describes how to decrypt the individual code objects.
+"""
+
 import dis
 import json
 import marshal
@@ -7,6 +13,7 @@ from io import BytesIO
 
 
 def display_code(code_obj):
+    """Prints all relevant attributes of the given code object."""
     attributes = dir(code_obj)
     for attr in attributes:
         if attr == "co_code":
@@ -29,6 +36,7 @@ def display_code(code_obj):
     #     print("    --- code crypted after this offset ---")
 
 
+# The dis() call would print something like this:
 """
 
   0           0 NOP
@@ -47,11 +55,12 @@ def display_code(code_obj):
              22 NOP
              24 NOP
 
-
 """
 
 
 def get_crypto_info(all_data: bytes, code_obj) -> dict:
+    """Returns a dictionary with information about the ciphered region in the code object."""
+
     # NOTES:
     # 1. co_code is sanitized before being given out to a script (invalid opcodes are zeroed), so it's useless for us
     # 2. Using _co_code_adaptive only works because we disable specialization in our custom Python build
