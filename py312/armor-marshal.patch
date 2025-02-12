@@ -1,0 +1,101 @@
+diff --git a/Include/opcode.h b/Include/opcode.h
+index 9806511..c8f9fb8 100644
+--- a/Include/opcode.h
++++ b/Include/opcode.h
+@@ -261,7 +261,7 @@ extern "C" {
+ #define NB_INPLACE_XOR                          25
+ 
+ /* Defined in Lib/opcode.py */
+-#define ENABLE_SPECIALIZATION 1
++#define ENABLE_SPECIALIZATION 0
+ 
+ #define IS_PSEUDO_OPCODE(op) (((op) >= MIN_PSEUDO_OPCODE) && ((op) <= MAX_PSEUDO_OPCODE))
+ 
+diff --git a/Lib/opcode.py b/Lib/opcode.py
+index 6bb2f1c..bf330ac 100644
+--- a/Lib/opcode.py
++++ b/Lib/opcode.py
+@@ -34,7 +34,7 @@
+ hasexc = []
+ 
+ 
+-ENABLE_SPECIALIZATION = True
++ENABLE_SPECIALIZATION = False
+ 
+ def is_pseudo(op):
+     return op >= MIN_PSEUDO_OPCODE and op <= MAX_PSEUDO_OPCODE
+diff --git a/Python/marshal.c b/Python/marshal.c
+index 3fc3f89..0f0317c 100644
+--- a/Python/marshal.c
++++ b/Python/marshal.c
+@@ -676,6 +676,7 @@ typedef struct {
+     char *buf;
+     Py_ssize_t buf_size;
+     PyObject *refs;  /* a list */
++    int armor;
+ } RFILE;
+ 
+ static const char *
+@@ -1467,6 +1468,14 @@ r_object(RFILE *p)
+ 
+             v = r_ref_insert(v, idx, flag, p);
+ 
++            if (p->armor == 1) {
++                int somelen = r_byte(p);
++                if (somelen) {
++                    const char *somestr = r_string(somelen, p);
++                    printf("Got extra data of length %d\n", somelen);
++                }
++            }
++
+           code_error:
+             if (v == NULL && !PyErr_Occurred()) {
+                 PyErr_SetString(PyExc_TypeError,
+@@ -1547,6 +1556,7 @@ PyMarshal_ReadShortFromFile(FILE *fp)
+     rf.fp = fp;
+     rf.end = rf.ptr = NULL;
+     rf.buf = NULL;
++    rf.armor = 0;
+     res = r_short(&rf);
+     if (rf.buf != NULL)
+         PyMem_Free(rf.buf);
+@@ -1562,6 +1572,7 @@ PyMarshal_ReadLongFromFile(FILE *fp)
+     rf.readable = NULL;
+     rf.ptr = rf.end = NULL;
+     rf.buf = NULL;
++    rf.armor = 0;
+     res = r_long(&rf);
+     if (rf.buf != NULL)
+         PyMem_Free(rf.buf);
+@@ -1624,6 +1635,7 @@ PyMarshal_ReadObjectFromFile(FILE *fp)
+     rf.depth = 0;
+     rf.ptr = rf.end = NULL;
+     rf.buf = NULL;
++    rf.armor = 0;
+     rf.refs = PyList_New(0);
+     if (rf.refs == NULL)
+         return NULL;
+@@ -1645,6 +1657,7 @@ PyMarshal_ReadObjectFromString(const char *str, Py_ssize_t len)
+     rf.end = str + len;
+     rf.buf = NULL;
+     rf.depth = 0;
++    rf.armor = 0;
+     rf.refs = PyList_New(0);
+     if (rf.refs == NULL)
+         return NULL;
+@@ -1777,6 +1790,7 @@ marshal_load(PyObject *module, PyObject *file)
+         rf.readable = file;
+         rf.ptr = rf.end = NULL;
+         rf.buf = NULL;
++        rf.armor = 1;
+         if ((rf.refs = PyList_New(0)) != NULL) {
+             result = read_object(&rf);
+             Py_DECREF(rf.refs);
+@@ -1836,6 +1850,7 @@ marshal_loads_impl(PyObject *module, Py_buffer *bytes)
+     rf.ptr = s;
+     rf.end = s + n;
+     rf.depth = 0;
++    rf.armor = 0;
+     if ((rf.refs = PyList_New(0)) == NULL)
+         return NULL;
+     result = read_object(&rf);

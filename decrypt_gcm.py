@@ -1,0 +1,83 @@
+import ast
+import json
+import sys
+from Crypto.Cipher import AES
+from typing import Optional
+
+# Insert result of ida_getkey script here
+KEY = bytes.fromhex('5c961198c441be7baafa61ded3fb39ea')
+
+
+def get_third_argument(filepath: str) -> Optional[bytes]:
+    """Parses an obfuscated script and attempts to extract the encoded module passed to __pyarmor__()."""
+    with open(filepath, 'r') as file:
+        content = file.read()
+
+    tree = ast.parse(content)
+
+    # Function visitor to find the first function call
+    class FunctionCallVisitor(ast.NodeVisitor):
+        def __init__(self):
+            self.first_function_call = None
+
+        def visit_Call(self, node):
+            if isinstance(node.func, ast.Name):  # Only consider named function calls
+                func_name = node.func.id
+                self.first_function_call = (func_name, node.args)
+                return  # Stop after the first function call
+            self.generic_visit(node)
+
+    visitor = FunctionCallVisitor()
+    visitor.visit(tree)
+
+    if visitor.first_function_call:
+        func_name, args = visitor.first_function_call
+        if len(args) >= 3:
+            if not isinstance(args[2], ast.Constant) or not isinstance(args[2].value, bytes):
+                raise Exception("3rd argument is not bytes constant")
+            return args[2].value
+    return None
+
+
+def decrypt_gcm_without_tag(key: bytes, nonce: bytes, ciphertext: bytes) -> bytes:
+    """Decrypts AES in GCM mode while ignoring the authentication tag."""
+    cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+    return cipher.decrypt(ciphertext)
+
+
+filename = sys.argv[1]
+if filename.endswith(".py"):
+    armor_bytes = get_third_argument(filename)
+    if armor_bytes is None:
+        raise Exception("Unable to find third __pyarmor__ argument")
+
+    nonce = armor_bytes[36:40] + armor_bytes[44:52]
+    ciphertext = armor_bytes[int.from_bytes(armor_bytes[28:32], 'little'):]
+
+    plaintext = decrypt_gcm_without_tag(KEY, nonce, ciphertext)
+
+    with open(filename + ".dec", "wb") as fpw:
+        fpw.write(plaintext)
+
+    print(f"{filename}.dec saved. Now run analyze_crypted_code using the special Python interpreter.")
+
+elif filename.endswith(".py.dec"):
+    with open(filename, "rb") as fp:
+        module = bytearray(fp.read())
+
+    crypted_regions = json.load(open(filename + ".json"))
+
+    for region in crypted_regions:
+        start = region["ciphertext_offset"] + 0x20  # account for pyarmor module header
+        size = region["ciphertext_size"]
+        ciphertext = module[start:start+size]
+        nonce = bytes.fromhex(region["nonce"])
+
+        plaintext = decrypt_gcm_without_tag(KEY, nonce, ciphertext)
+        module[start:start+size] = plaintext
+
+    with open(filename + "2", "wb") as fpw:
+        fpw.write(module)
+
+else:
+    print("Don't know what to do with this file type.")
