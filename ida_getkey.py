@@ -3,7 +3,7 @@
 import ida_bytes
 import hashlib
 
-# This may vary
+# This string is a unique license ID of the person who obfuscated the script, in the free version it would always be 000000 and in paid versions its unique per person
 PYARMOR_STRING = b"pyarmor-vax-007106\x00\x00"
 
 # References to these are in the "get_key_via_md5" function
