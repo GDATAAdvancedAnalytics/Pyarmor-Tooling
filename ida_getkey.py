@@ -28,7 +28,7 @@ md.update(PYARMOR_STRING)
 rsakey = ida_bytes.get_bytes(INFO_BLOB_ADDR + 0x20, RSA_KEY_SIZE)
 hashed_area_size = int.from_bytes(ida_bytes.get_bytes(INFO_BLOB_ADDR + 0x130 + 4, 4), 'little')
 hashed_area = ida_bytes.get_bytes(INFO_BLOB_ADDR + 0x130 + 0x20, hashed_area_size)
-rsakey2 = bytes([b ^ RSA_XOR_KEY for b in ida_bytes.get_bytes(RSA_KEY2, RSA_KEY_SIZE)])
+rsakey2 = bytes([b ^ RSA_XOR_KEY for b in ida_bytes.get_bytes(RSA_KEY2_ADDR, RSA_KEY_SIZE)])
 
 md.update(rsakey)
 md.update(hashed_area)
