@@ -13,7 +13,7 @@ RUN git clone --depth 1 --branch 3.11 https://github.com/python/cpython.git && \
     ./configure && \
     make regen-all
 
-RUN echo '#!/bin/sh\n/cpython/python -X no_specialization "$@"' > /run_python.sh && \
+RUN echo '#!/bin/sh\n/cpython/python -X nospecialization "$@"' > /run_python.sh && \
     chmod +x /run_python.sh
 
 ENTRYPOINT [ "/run_python.sh" ]
