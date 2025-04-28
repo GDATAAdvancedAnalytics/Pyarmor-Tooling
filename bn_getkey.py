@@ -18,8 +18,8 @@ INFO_BLOB_ADDR = 0x65642060
 #	data_65646160 ^= zmm0
 RSA_KEY2_ADDR = 0x65646140
 
-# From a global dword passed to md5_process (NOTE: we assume size is the same for rsakey and rsakey2, validate this!)
-RSA_KEY_SIZE = 0x10E
+# From a global dword passed to md5_process
+RSA_KEY2_SIZE = 0x10E
 
 # Byte value that RSA_KEY2 is xored with
 RSA_XOR_KEY = 0xF1
@@ -27,11 +27,17 @@ RSA_XOR_KEY = 0xF1
 
 md = hashlib.md5()
 md.update(PYARMOR_STRING)
+
 br = BinaryReader(bv, Endianness.BigEndian)
-rsakey = br.read(RSA_KEY_SIZE, INFO_BLOB_ADDR + 0x20)
-hashed_area_size = int.from_bytes(br.read(4, INFO_BLOB_ADDR + 0x130 + 4), 'little')
-hashed_area = br.read(hashed_area_size, INFO_BLOB_ADDR + 0x130 + 0x20)
-rsakey2 = bytes([b ^ RSA_XOR_KEY for b in br.read(RSA_KEY_SIZE, RSA_KEY2_ADDR)])
+
+rsakey_size = int.from_bytes(br.read(4, INFO_BLOB_ADDR - 0xC), 'little')
+rsakey = br.read(rsakey_size, INFO_BLOB_ADDR + 0x20)
+
+sig_offset = int.from_bytes(br.read(4, INFO_BLOB_ADDR - 0x8), 'little')
+hashed_area_size = int.from_bytes(br.read(4, INFO_BLOB_ADDR + sig_offset + 4), 'little')
+hashed_area = br.read(hashed_area_size, INFO_BLOB_ADDR + sig_offset + 0x20)
+
+rsakey2 = bytes([b ^ RSA_XOR_KEY for b in br.read(RSA_KEY2_SIZE, RSA_KEY2_ADDR)])
 
 md.update(rsakey)
 md.update(hashed_area)
