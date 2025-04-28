@@ -1,4 +1,10 @@
-# Usage
+# Pyarmor v8+ tooling
+
+This repository contains some scripts for statically decrypting Python scripts protected with Pyarmor v8 or higher.
+
+Blog post for further reading: https://cyber.wtf/2025/02/12/unpacking-pyarmor-v8-scripts/
+
+## Usage
 
 Initial preparation: Go into `py312` and run `docker build -t pyarmor312 .`. Also create a virtual env where you install `pycryptodome`.
 
