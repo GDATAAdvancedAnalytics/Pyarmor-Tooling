@@ -79,6 +79,23 @@ if filename.endswith(".py") or filename.endswith(".pyc"):
     else:
         armor_bytes = get_bytes_from_pyc(filename)
 
+    if armor_bytes[20] == 9:
+        # BCC mode has two consecutive blobs. The first contains an ELF.
+        nonce = armor_bytes[36:40] + armor_bytes[44:52]
+        bcc_start = int.from_bytes(armor_bytes[28:32], 'little')
+        bcc_end = int.from_bytes(armor_bytes[56:60], 'little')
+        ciphertext = armor_bytes[bcc_start:bcc_end]
+
+        plaintext = decrypt_gcm_without_tag(KEY, nonce, ciphertext)
+
+        with open(filename + ".dec.elf", "wb") as fpw:
+            fpw.write(plaintext[16:])
+
+        print(f"[!] Detected BCC mode! ELF saved as {filename}.dec.elf.")
+
+        # Second part should be a "normal" type 8 blob.
+        armor_bytes = armor_bytes[bcc_end:]
+
     nonce = armor_bytes[36:40] + armor_bytes[44:52]
     ciphertext = armor_bytes[int.from_bytes(armor_bytes[28:32], 'little'):]
 
