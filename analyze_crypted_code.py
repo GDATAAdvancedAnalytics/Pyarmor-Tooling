@@ -67,8 +67,9 @@ def get_crypto_info(all_data: bytes, code_obj) -> dict:
     code: bytes = code_obj._co_code_adaptive
     code_offset_in_data = all_data.index(code)
 
-    if code[8] != opcode.opmap["LOAD_CONST"]:
-        raise Exception("Expected LOAD_CONST at offset 8")
+    if code[8] != opcode.opmap["LOAD_CONST"] or code[12] != opcode.opmap["CALL_FUNCTION_EX"]:
+        print("Method does not seem to be encrypted")
+        return {}
 
     # Get the LOAD_CONST bytes that can be seen above at offset 8.
     crypto_info = code_obj.co_consts[code[9]]
@@ -109,7 +110,8 @@ for const in obj.co_consts:
     if isinstance(const, type((lambda: None).__code__)):
         print("Found " + str(const))
         display_code(const)
-        crypted_regions.append(get_crypto_info(data, const))
+        if info := get_crypto_info(data, const):
+            crypted_regions.append(info)
 
 crypted_regions.append(get_crypto_info(data, obj))
 

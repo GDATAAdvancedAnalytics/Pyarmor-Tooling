@@ -106,7 +106,7 @@ if filename.endswith(".py") or filename.endswith(".pyc"):
 
     print(f"{filename}.dec saved. Now run analyze_crypted_code using the special Python interpreter.")
 
-elif filename.endswith(".py.dec"):
+elif filename.endswith(".py.dec") or filename.endswith(".pyc.dec"):
     with open(filename, "rb") as fp:
         module = bytearray(fp.read())
 
