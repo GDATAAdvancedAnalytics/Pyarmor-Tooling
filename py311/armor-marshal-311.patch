@@ -1,5 +1,5 @@
 diff --git a/Python/marshal.c b/Python/marshal.c
-index 29f3bab..92a0a98 100644
+index 29f3bab..e758d61 100644
 --- a/Python/marshal.c
 +++ b/Python/marshal.c
 @@ -674,6 +674,7 @@ typedef struct {
@@ -10,10 +10,15 @@ index 29f3bab..92a0a98 100644
  } RFILE;
  
  static const char *
-@@ -1467,6 +1468,14 @@ r_object(RFILE *p)
+@@ -1467,6 +1468,19 @@ r_object(RFILE *p)
  
              v = r_ref_insert(v, idx, flag, p);
  
++            if ( (flags & 0x20000000) == 0 ) {
++                v->ob_refcnt |= 0x20000000;
++                goto code_error;
++            }
++
 +            if (p->armor == 1) {
 +                int somelen = r_byte(p);
 +                if (somelen) {
@@ -25,7 +30,7 @@ index 29f3bab..92a0a98 100644
            code_error:
              if (v == NULL && !PyErr_Occurred()) {
                  PyErr_SetString(PyExc_TypeError,
-@@ -1548,6 +1557,7 @@ PyMarshal_ReadShortFromFile(FILE *fp)
+@@ -1548,6 +1562,7 @@ PyMarshal_ReadShortFromFile(FILE *fp)
      rf.fp = fp;
      rf.end = rf.ptr = NULL;
      rf.buf = NULL;
@@ -33,7 +38,7 @@ index 29f3bab..92a0a98 100644
      res = r_short(&rf);
      if (rf.buf != NULL)
          PyMem_Free(rf.buf);
-@@ -1563,6 +1573,7 @@ PyMarshal_ReadLongFromFile(FILE *fp)
+@@ -1563,6 +1578,7 @@ PyMarshal_ReadLongFromFile(FILE *fp)
      rf.readable = NULL;
      rf.ptr = rf.end = NULL;
      rf.buf = NULL;
@@ -41,7 +46,7 @@ index 29f3bab..92a0a98 100644
      res = r_long(&rf);
      if (rf.buf != NULL)
          PyMem_Free(rf.buf);
-@@ -1625,6 +1636,7 @@ PyMarshal_ReadObjectFromFile(FILE *fp)
+@@ -1625,6 +1641,7 @@ PyMarshal_ReadObjectFromFile(FILE *fp)
      rf.depth = 0;
      rf.ptr = rf.end = NULL;
      rf.buf = NULL;
@@ -49,7 +54,7 @@ index 29f3bab..92a0a98 100644
      rf.refs = PyList_New(0);
      if (rf.refs == NULL)
          return NULL;
-@@ -1646,6 +1658,7 @@ PyMarshal_ReadObjectFromString(const char *str, Py_ssize_t len)
+@@ -1646,6 +1663,7 @@ PyMarshal_ReadObjectFromString(const char *str, Py_ssize_t len)
      rf.end = str + len;
      rf.buf = NULL;
      rf.depth = 0;
@@ -57,7 +62,7 @@ index 29f3bab..92a0a98 100644
      rf.refs = PyList_New(0);
      if (rf.refs == NULL)
          return NULL;
-@@ -1778,6 +1791,7 @@ marshal_load(PyObject *module, PyObject *file)
+@@ -1778,6 +1796,7 @@ marshal_load(PyObject *module, PyObject *file)
          rf.readable = file;
          rf.ptr = rf.end = NULL;
          rf.buf = NULL;
@@ -65,7 +70,7 @@ index 29f3bab..92a0a98 100644
          if ((rf.refs = PyList_New(0)) != NULL) {
              result = read_object(&rf);
              Py_DECREF(rf.refs);
-@@ -1837,6 +1851,7 @@ marshal_loads_impl(PyObject *module, Py_buffer *bytes)
+@@ -1837,6 +1856,7 @@ marshal_loads_impl(PyObject *module, Py_buffer *bytes)
      rf.ptr = s;
      rf.end = s + n;
      rf.depth = 0;
