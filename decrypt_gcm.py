@@ -47,6 +47,23 @@ def get_third_argument(filepath: str) -> Optional[bytes]:
     return None
 
 
+def get_bytes_from_pyc(filepath: str) -> bytes:
+    with open(filename, "rb") as fp:
+        module = fp.read()
+
+    # This is somewhat dirty, might not work for all versions.
+    bytes_pos = module.find(b"__pyarmor__\x73")
+    if bytes_pos == -1:
+        raise Exception("Unable to locate pyarmor data in compiled module")
+
+    bytes_pos += len(b"__pyarmor__\x73")
+    armor_len = int.from_bytes(module[bytes_pos:bytes_pos+4], 'little')
+    if armor_len < 0x200 or armor_len > 10 * 1024 * 1024:
+        raise Exception(f"String length implausible: {armor_len}")
+
+    return module[bytes_pos+4:bytes_pos+4+armor_len]
+
+
 def decrypt_gcm_without_tag(key: bytes, nonce: bytes, ciphertext: bytes) -> bytes:
     """Decrypts AES in GCM mode while ignoring the authentication tag."""
     cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
@@ -54,10 +71,30 @@ def decrypt_gcm_without_tag(key: bytes, nonce: bytes, ciphertext: bytes) -> byte
 
 
 filename = sys.argv[1]
-if filename.endswith(".py"):
-    armor_bytes = get_third_argument(filename)
-    if armor_bytes is None:
-        raise Exception("Unable to find third __pyarmor__ argument")
+if filename.endswith(".py") or filename.endswith(".pyc"):
+    if filename.endswith(".py"):
+        armor_bytes = get_third_argument(filename)
+        if armor_bytes is None:
+            raise Exception("Unable to find third __pyarmor__ argument")
+    else:
+        armor_bytes = get_bytes_from_pyc(filename)
+
+    if armor_bytes[20] == 9:
+        # BCC mode has two consecutive blobs. The first contains an ELF.
+        nonce = armor_bytes[36:40] + armor_bytes[44:52]
+        bcc_start = int.from_bytes(armor_bytes[28:32], 'little')
+        bcc_end = int.from_bytes(armor_bytes[56:60], 'little')
+        ciphertext = armor_bytes[bcc_start:bcc_end]
+
+        plaintext = decrypt_gcm_without_tag(KEY, nonce, ciphertext)
+
+        with open(filename + ".dec.elf", "wb") as fpw:
+            fpw.write(plaintext[16:])
+
+        print(f"[!] Detected BCC mode! ELF saved as {filename}.dec.elf.")
+
+        # Second part should be a "normal" type 8 blob.
+        armor_bytes = armor_bytes[bcc_end:]
 
     nonce = armor_bytes[36:40] + armor_bytes[44:52]
     ciphertext = armor_bytes[int.from_bytes(armor_bytes[28:32], 'little'):]
