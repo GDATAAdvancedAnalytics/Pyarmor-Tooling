@@ -40,7 +40,7 @@ index 3fc3f89..0f0317c 100644
  
              v = r_ref_insert(v, idx, flag, p);
  
-+            if (p->armor == 1) {
++            if (p->armor == 1 && (flags & 0x20000000) != 0) {
 +                int somelen = r_byte(p);
 +                if (somelen) {
 +                    const char *somestr = r_string(somelen, p);
