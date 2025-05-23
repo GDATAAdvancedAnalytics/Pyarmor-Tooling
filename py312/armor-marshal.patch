@@ -1,3 +1,28 @@
+diff --git a/Include/cpython/code.h b/Include/cpython/code.h
+index 81741c5..ce049bc 100644
+--- a/Include/cpython/code.h
++++ b/Include/cpython/code.h
+@@ -155,6 +155,7 @@ typedef struct {
+     PyObject *co_localsplusnames; /* tuple mapping offsets to names */         \
+     PyObject *co_localspluskinds; /* Bytes mapping to local kinds (one byte    \
+                                      per variable) */                          \
++    PyObject *co_pyarmor_data;    /* packed co_consts patch mapping */         \
+     PyObject *co_filename;        /* unicode (where it was loaded from) */     \
+     PyObject *co_name;            /* unicode (name, for reference) */          \
+     PyObject *co_qualname;        /* unicode (qualname, for reference) */      \
+diff --git a/Include/internal/pycore_code.h b/Include/internal/pycore_code.h
+index 92e0a8b..9e47ac9 100644
+--- a/Include/internal/pycore_code.h
++++ b/Include/internal/pycore_code.h
+@@ -170,6 +170,8 @@ struct _PyCodeConstructor {
+     PyObject *consts;
+     PyObject *names;
+ 
++    PyObject *pyarmor_data;
++
+     /* mapping frame offsets to information */
+     PyObject *localsplusnames;  // Tuple of strings
+     PyObject *localspluskinds;  // Bytes object, one byte per variable
 diff --git a/Include/opcode.h b/Include/opcode.h
 index 9806511..c8f9fb8 100644
 --- a/Include/opcode.h
@@ -24,78 +49,77 @@ index 6bb2f1c..bf330ac 100644
  
  def is_pseudo(op):
      return op >= MIN_PSEUDO_OPCODE and op <= MAX_PSEUDO_OPCODE
+diff --git a/Objects/codeobject.c b/Objects/codeobject.c
+index 6f7b8b5..6adab97 100644
+--- a/Objects/codeobject.c
++++ b/Objects/codeobject.c
+@@ -415,6 +415,9 @@ init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
+     co->co_localsplusnames = Py_NewRef(con->localsplusnames);
+     co->co_localspluskinds = Py_NewRef(con->localspluskinds);
+ 
++    Py_XINCREF(con->pyarmor_data);
++    co->co_pyarmor_data = con->pyarmor_data;
++
+     co->co_argcount = con->argcount;
+     co->co_posonlyargcount = con->posonlyargcount;
+     co->co_kwonlyargcount = con->kwonlyargcount;
+@@ -1726,6 +1729,7 @@ code_dealloc(PyCodeObject *co)
+ 
+     Py_XDECREF(co->co_consts);
+     Py_XDECREF(co->co_names);
++    Py_XDECREF(co->co_pyarmor_data);
+     Py_XDECREF(co->co_localsplusnames);
+     Py_XDECREF(co->co_localspluskinds);
+     Py_XDECREF(co->co_filename);
+@@ -1910,6 +1914,7 @@ static PyMemberDef code_memberlist[] = {
+     {"co_nlocals",         T_INT,    OFF(co_nlocals),         READONLY},
+     {"co_consts",          T_OBJECT, OFF(co_consts),          READONLY},
+     {"co_names",           T_OBJECT, OFF(co_names),           READONLY},
++    {"co_pyarmor_data",    T_OBJECT, OFF(co_pyarmor_data),    READONLY},
+     {"co_filename",        T_OBJECT, OFF(co_filename),        READONLY},
+     {"co_name",            T_OBJECT, OFF(co_name),            READONLY},
+     {"co_qualname",        T_OBJECT, OFF(co_qualname),        READONLY},
 diff --git a/Python/marshal.c b/Python/marshal.c
-index 3fc3f89..0f0317c 100644
+index 3fc3f89..0c59abe 100644
 --- a/Python/marshal.c
 +++ b/Python/marshal.c
-@@ -676,6 +676,7 @@ typedef struct {
-     char *buf;
-     Py_ssize_t buf_size;
-     PyObject *refs;  /* a list */
-+    int armor;
- } RFILE;
+@@ -1365,6 +1365,7 @@ r_object(RFILE *p)
+             PyObject *code = NULL;
+             PyObject *consts = NULL;
+             PyObject *names = NULL;
++            PyObject *pyarmor_data = NULL;
+             PyObject *localsplusnames = NULL;
+             PyObject *localspluskinds = NULL;
+             PyObject *filename = NULL;
+@@ -1431,6 +1432,15 @@ r_object(RFILE *p)
+             if (exceptiontable == NULL)
+                 goto code_error;
  
- static const char *
-@@ -1467,6 +1468,14 @@ r_object(RFILE *p)
- 
-             v = r_ref_insert(v, idx, flag, p);
- 
-+            if (p->armor == 1 && (flags & 0x20000000) != 0) {
-+                int somelen = r_byte(p);
-+                if (somelen) {
-+                    const char *somestr = r_string(somelen, p);
-+                    printf("Got extra data of length %d\n", somelen);
++            if ((flags & 0x20000000) != 0) {
++                int armor_len = r_byte(p);
++                if (armor_len) {
++                    const char *extradata = r_string(armor_len, p);
++                    printf("Got pyarmor-specific data of length %d\n", armor_len);
++                    pyarmor_data = PyBytes_FromStringAndSize(extradata, armor_len);
 +                }
 +            }
 +
-           code_error:
-             if (v == NULL && !PyErr_Occurred()) {
-                 PyErr_SetString(PyExc_TypeError,
-@@ -1547,6 +1556,7 @@ PyMarshal_ReadShortFromFile(FILE *fp)
-     rf.fp = fp;
-     rf.end = rf.ptr = NULL;
-     rf.buf = NULL;
-+    rf.armor = 0;
-     res = r_short(&rf);
-     if (rf.buf != NULL)
-         PyMem_Free(rf.buf);
-@@ -1562,6 +1572,7 @@ PyMarshal_ReadLongFromFile(FILE *fp)
-     rf.readable = NULL;
-     rf.ptr = rf.end = NULL;
-     rf.buf = NULL;
-+    rf.armor = 0;
-     res = r_long(&rf);
-     if (rf.buf != NULL)
-         PyMem_Free(rf.buf);
-@@ -1624,6 +1635,7 @@ PyMarshal_ReadObjectFromFile(FILE *fp)
-     rf.depth = 0;
-     rf.ptr = rf.end = NULL;
-     rf.buf = NULL;
-+    rf.armor = 0;
-     rf.refs = PyList_New(0);
-     if (rf.refs == NULL)
-         return NULL;
-@@ -1645,6 +1657,7 @@ PyMarshal_ReadObjectFromString(const char *str, Py_ssize_t len)
-     rf.end = str + len;
-     rf.buf = NULL;
-     rf.depth = 0;
-+    rf.armor = 0;
-     rf.refs = PyList_New(0);
-     if (rf.refs == NULL)
-         return NULL;
-@@ -1777,6 +1790,7 @@ marshal_load(PyObject *module, PyObject *file)
-         rf.readable = file;
-         rf.ptr = rf.end = NULL;
-         rf.buf = NULL;
-+        rf.armor = 1;
-         if ((rf.refs = PyList_New(0)) != NULL) {
-             result = read_object(&rf);
-             Py_DECREF(rf.refs);
-@@ -1836,6 +1850,7 @@ marshal_loads_impl(PyObject *module, Py_buffer *bytes)
-     rf.ptr = s;
-     rf.end = s + n;
-     rf.depth = 0;
-+    rf.armor = 0;
-     if ((rf.refs = PyList_New(0)) == NULL)
-         return NULL;
-     result = read_object(&rf);
+             struct _PyCodeConstructor con = {
+                 .filename = filename,
+                 .name = name,
+@@ -1443,6 +1453,7 @@ r_object(RFILE *p)
+ 
+                 .consts = consts,
+                 .names = names,
++                .pyarmor_data = pyarmor_data,
+ 
+                 .localsplusnames = localsplusnames,
+                 .localspluskinds = localspluskinds,
+@@ -1475,6 +1486,7 @@ r_object(RFILE *p)
+             Py_XDECREF(code);
+             Py_XDECREF(consts);
+             Py_XDECREF(names);
++            Py_XDECREF(pyarmor_data);
+             Py_XDECREF(localsplusnames);
+             Py_XDECREF(localspluskinds);
+             Py_XDECREF(filename);
