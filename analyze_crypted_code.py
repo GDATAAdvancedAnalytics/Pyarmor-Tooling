@@ -96,25 +96,42 @@ def get_crypto_info(all_data: bytes, code_obj) -> dict:
     }
 
 
-with open(sys.argv[1], "rb") as fp:
-    fp.seek(0x20)
-    data = fp.read()
+def process_code_object(code_obj, filedata: bytes, crypted_regions: list[dict]) -> None:
+    """
+    Recursively processes a code object and its nested code objects in constants
+    in order to extract encryption information.
 
-obj = marshal.load(BytesIO(data))
+    Args:
+        code_obj: The code object to process
+        filedata: Entire contents of the Python module
+        crypted_regions: List that is appended to
+    """
+    for const in code_obj.co_consts:
+        if isinstance(const, type((lambda: None).__code__)):
+            print("Found nested code object: " + str(const))
+            display_code(const)
+            if info := get_crypto_info(filedata, const):
+                crypted_regions.append(info)
 
-display_code(obj)
+            process_code_object(const, filedata, crypted_regions)
 
-crypted_regions = []
 
-for const in obj.co_consts:
-    if isinstance(const, type((lambda: None).__code__)):
-        print("Found " + str(const))
-        display_code(const)
-        if info := get_crypto_info(data, const):
-            crypted_regions.append(info)
+def main(filename: str) -> None:
+    with open(filename, "rb") as fp:
+        fp.seek(0x20)
+        data = fp.read()
 
-crypted_regions.append(get_crypto_info(data, obj))
+    obj = marshal.load(BytesIO(data))
+    display_code(obj)
 
-json.dump(crypted_regions, open(sys.argv[1] + ".json", "w"))
+    crypted_regions: list[dict] = []
+    process_code_object(obj, data, crypted_regions)
+    crypted_regions.append(get_crypto_info(data, obj))
 
-print(f"Found {len(crypted_regions)} encrypted code objects. {sys.argv[1]}.json saved.")
+    json.dump(crypted_regions, open(filename + ".json", "w"))
+
+    print(f"Found {len(crypted_regions)} encrypted code objects. {filename}.json saved.")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1])
