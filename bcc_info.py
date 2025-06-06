@@ -86,7 +86,7 @@ def parse_pyarmor_data(code_obj, bcc_list: list[tuple[int, str]]) -> Optional[tu
             print("  Constants:")
             for i, c in enumerate(code_obj.co_consts[const_index + 1]):
                 print(f"    {i + 3}: {c}")
-                if isinstance(const, type((lambda: None).__code__)):
+                if isinstance(c, type((lambda: None).__code__)):
                     bcc_consts.append(str(c))
                 else:
                     bcc_consts.append(c)
