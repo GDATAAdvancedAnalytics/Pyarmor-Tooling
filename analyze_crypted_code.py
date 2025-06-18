@@ -61,18 +61,23 @@ def display_code(code_obj):
 def get_crypto_info(all_data: bytes, code_obj) -> dict:
     """Returns a dictionary with information about the ciphered region in the code object."""
 
-    # NOTES:
+    # NOTES (Python 3.11+):
     # 1. co_code is sanitized before being given out to a script (invalid opcodes are zeroed), so it's useless for us
     # 2. Using _co_code_adaptive only works because we disable specialization in our custom Python build
-    code: bytes = code_obj._co_code_adaptive
+    if sys.version_info.major > 3 or sys.version_info.minor > 10:
+        code: bytes = code_obj._co_code_adaptive
+    else:
+        code = code_obj.co_code
     code_offset_in_data = all_data.index(code)
 
-    if code[8] != opcode.opmap["LOAD_CONST"] or code[12] != opcode.opmap["CALL_FUNCTION_EX"]:
+    case1 = code[8] == opcode.opmap["LOAD_CONST"] and code[12] == opcode.opmap["CALL_FUNCTION_EX"]
+    case2 = code[14] == opcode.opmap["LOAD_CONST"] and code[16] == opcode.opmap["CALL_FUNCTION"]
+    if not case1 and not case2:
         print("Method does not seem to be encrypted")
         return {}
 
-    # Get the LOAD_CONST bytes that can be seen above at offset 8.
-    crypto_info = code_obj.co_consts[code[9]]
+    # Get the constant that is loaded by LOAD_CONST at offset 8 or 14.
+    crypto_info = code_obj.co_consts[code[(8 if case1 else 14) + 1]]
 
     if not isinstance(crypto_info, bytes):
         raise Exception(f"Expected LOAD_CONST to load bytes, got {type(crypto_info)}")
