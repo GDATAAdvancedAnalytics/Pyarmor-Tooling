@@ -113,7 +113,8 @@ elif filename.endswith(".py.dec") or filename.endswith(".pyc.dec"):
     crypted_regions = json.load(open(filename + ".json"))
 
     for region in crypted_regions:
-        start = region["ciphertext_offset"] + 0x20  # account for pyarmor module header
+        skip = int.from_bytes(module[0:4], 'little') + int.from_bytes(module[4:8], 'little')
+        start = region["ciphertext_offset"] + skip
         size = region["ciphertext_size"]
         ciphertext = module[start:start+size]
         nonce = bytes.fromhex(region["nonce"])

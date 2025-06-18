@@ -106,12 +106,13 @@ def process_code_object(code_obj, filedata: bytes, crypted_regions: list[dict]) 
         filedata: Entire contents of the Python module
         crypted_regions: List that is appended to
     """
+    if info := get_crypto_info(filedata, code_obj):
+        crypted_regions.append(info)
+
     for const in code_obj.co_consts:
         if isinstance(const, type((lambda: None).__code__)):
             print("Found nested code object: " + str(const))
             display_code(const)
-            if info := get_crypto_info(filedata, const):
-                crypted_regions.append(info)
 
             process_code_object(const, filedata, crypted_regions)
 
@@ -127,7 +128,6 @@ def main(filename: str) -> None:
 
     crypted_regions: list[dict] = []
     process_code_object(obj, data, crypted_regions)
-    crypted_regions.append(get_crypto_info(data, obj))
 
     json.dump(crypted_regions, open(filename + ".json", "w"))
 
