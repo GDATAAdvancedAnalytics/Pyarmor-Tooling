@@ -118,7 +118,8 @@ def process_code_object(code_obj, filedata: bytes, crypted_regions: list[dict]) 
 
 def main(filename: str) -> None:
     with open(filename, "rb") as fp:
-        fp.seek(0x20)
+        skip = int.from_bytes(fp.read(4), 'little') + int.from_bytes(fp.read(4), 'little')
+        fp.seek(skip)
         data = fp.read()
 
     obj = marshal.load(BytesIO(data))

@@ -141,7 +141,8 @@ with open(elf_name, "rb") as fp:
 
 # Unmarshal Python module containing the calls to BCC.
 with open(sys.argv[1], "rb") as fp:
-    fp.seek(0x20)
+    skip = int.from_bytes(fp.read(4), 'little') + int.from_bytes(fp.read(4), 'little')
+    fp.seek(skip)
     data = fp.read()
 
 obj = marshal.load(BytesIO(data))
