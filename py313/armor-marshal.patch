@@ -1,0 +1,99 @@
+diff --git a/Include/cpython/code.h b/Include/cpython/code.h
+index bd8afab..9832c75 100644
+--- a/Include/cpython/code.h
++++ b/Include/cpython/code.h
+@@ -120,6 +120,7 @@ typedef struct {
+     PyObject *co_localsplusnames; /* tuple mapping offsets to names */         \
+     PyObject *co_localspluskinds; /* Bytes mapping to local kinds (one byte    \
+                                      per variable) */                          \
++    PyObject *co_pyarmor_data;    /* packed co_consts patch mapping */         \
+     PyObject *co_filename;        /* unicode (where it was loaded from) */     \
+     PyObject *co_name;            /* unicode (name, for reference) */          \
+     PyObject *co_qualname;        /* unicode (qualname, for reference) */      \
+diff --git a/Include/internal/pycore_code.h b/Include/internal/pycore_code.h
+index 1fb8cc4..3e1ab3b 100644
+--- a/Include/internal/pycore_code.h
++++ b/Include/internal/pycore_code.h
+@@ -256,6 +256,8 @@ struct _PyCodeConstructor {
+     PyObject *consts;
+     PyObject *names;
+ 
++    PyObject *pyarmor_data;
++
+     /* mapping frame offsets to information */
+     PyObject *localsplusnames;  // Tuple of strings
+     PyObject *localspluskinds;  // Bytes object, one byte per variable
+diff --git a/Objects/codeobject.c b/Objects/codeobject.c
+index bdf6ee9..4a28f4a 100644
+--- a/Objects/codeobject.c
++++ b/Objects/codeobject.c
+@@ -521,6 +521,9 @@ init_code(PyCodeObject *co, struct _PyCodeConstructor *con)
+ 
+     co->co_localsplusnames = Py_NewRef(con->localsplusnames);
+     co->co_localspluskinds = Py_NewRef(con->localspluskinds);
++    
++    Py_XINCREF(con->pyarmor_data);
++    co->co_pyarmor_data = con->pyarmor_data;
+ 
+     co->co_argcount = con->argcount;
+     co->co_posonlyargcount = con->posonlyargcount;
+@@ -1914,6 +1917,7 @@ code_dealloc(PyCodeObject *co)
+ 
+     Py_XDECREF(co->co_consts);
+     Py_XDECREF(co->co_names);
++    Py_XDECREF(co->co_pyarmor_data);
+     Py_XDECREF(co->co_localsplusnames);
+     Py_XDECREF(co->co_localspluskinds);
+     Py_XDECREF(co->co_filename);
+@@ -2135,6 +2139,7 @@ static PyMemberDef code_memberlist[] = {
+     {"co_nlocals",         Py_T_INT,     OFF(co_nlocals),         Py_READONLY},
+     {"co_consts",          _Py_T_OBJECT, OFF(co_consts),          Py_READONLY},
+     {"co_names",           _Py_T_OBJECT, OFF(co_names),           Py_READONLY},
++    {"co_pyarmor_data",    _Py_T_OBJECT, OFF(co_pyarmor_data),    Py_READONLY},
+     {"co_filename",        _Py_T_OBJECT, OFF(co_filename),        Py_READONLY},
+     {"co_name",            _Py_T_OBJECT, OFF(co_name),            Py_READONLY},
+     {"co_qualname",        _Py_T_OBJECT, OFF(co_qualname),        Py_READONLY},
+diff --git a/Python/marshal.c b/Python/marshal.c
+index 76fa701..91a9242 100644
+--- a/Python/marshal.c
++++ b/Python/marshal.c
+@@ -1391,6 +1391,7 @@ r_object(RFILE *p)
+             PyObject *code = NULL;
+             PyObject *consts = NULL;
+             PyObject *names = NULL;
++	    PyObject *pyarmor_data = NULL;
+             PyObject *localsplusnames = NULL;
+             PyObject *localspluskinds = NULL;
+             PyObject *filename = NULL;
+@@ -1462,6 +1463,15 @@ r_object(RFILE *p)
+             if (exceptiontable == NULL)
+                 goto code_error;
+ 
++	    if ((flags & 0x20000000) != 0) {
++                int armor_len = r_byte(p);
++                if (armor_len) {
++                    const char *extradata = r_string(armor_len, p);
++                    printf("Got pyarmor-specific data of length %d\n", armor_len);
++                    pyarmor_data = PyBytes_FromStringAndSize(extradata, armor_len);
++                }
++            }
++
+             struct _PyCodeConstructor con = {
+                 .filename = filename,
+                 .name = name,
+@@ -1474,6 +1484,7 @@ r_object(RFILE *p)
+ 
+                 .consts = consts,
+                 .names = names,
++		.pyarmor_data = pyarmor_data,
+ 
+                 .localsplusnames = localsplusnames,
+                 .localspluskinds = localspluskinds,
+@@ -1506,6 +1517,7 @@ r_object(RFILE *p)
+             Py_XDECREF(code);
+             Py_XDECREF(consts);
+             Py_XDECREF(names);
++	    Py_XDECREF(pyarmor_data);
+             Py_XDECREF(localsplusnames);
+             Py_XDECREF(localspluskinds);
+             Py_XDECREF(filename);
